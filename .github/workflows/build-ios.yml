@@ -1,0 +1,107 @@
+# Build app iPhone Cân DT580 ra file .ipa CHƯA KÝ (unsigned)
+# để dương tự ký lại bằng zSign trên iPhone.
+#
+# Cách chạy:
+#   - Tự động: push tag dạng v* (ví dụ: git tag v1.0.0 && git push origin v1.0.0)
+#   - Chạy tay: vào tab Actions trên GitHub → chọn workflow này → Run workflow
+#
+# Không cần secrets, không cần tài khoản Apple/Expo.
+# File .ipa sẽ có trong tab Actions (Artifacts) và trong mục Releases (khi push tag).
+#
+# Giả định (ghi rõ để người đọc biết):
+#   - Code app Expo nằm trong thư mục app/ (có package.json, app.json).
+#   - Tên app: "Cân DT580", bundle ID: com.bao.candt580 (trong app.json).
+#   - Node 22 LTS (khớp Expo SDK 58; Expo yêu cầu Node 18+).
+#   - Tên workspace/scheme của Xcode được tìm tự động (không hard-code),
+#     vì tên project sau khi prebuild có thể khác tên app do ký tự tiếng Việt.
+
+name: Build iOS (unsigned .ipa)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build-ios:
+    name: Build unsigned .ipa
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Cài đặt dependencies (thư mục app/)
+        working-directory: app
+        run: npm install
+
+      - name: Prebuild iOS (tạo thư mục native ios/)
+        working-directory: app
+        run: npx expo prebuild --platform ios --clean --non-interactive
+
+      - name: Build .app không ký (xcodebuild)
+        working-directory: app
+        run: |
+          WORKSPACE=$(ls ios/*.xcworkspace | head -n 1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+          xcodebuild -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=
+
+      - name: Đóng gói .ipa unsigned
+        working-directory: app
+        run: |
+          APP_PATH=$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Không tìm thấy file .app sau khi build"
+            ls -R ios/build/Build/Products/ || true
+            exit 1
+          fi
+          echo "App tìm thấy: $APP_PATH"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r CanDT580-unsigned.ipa Payload
+          rm -rf Payload
+          ls -lh CanDT580-unsigned.ipa
+
+      - name: Upload .ipa làm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CanDT580-unsigned-${{ github.ref_name }}
+          path: app/CanDT580-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Đăng file .ipa lên GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Cân DT580 ${{ github.ref_name }}
+          body: |
+            File .ipa CHƯA KÝ (unsigned) của app Cân DT580.
+
+            Cách cài:
+            1. Tải file CanDT580-unsigned.ipa về iPhone.
+            2. Ký lại bằng zSign trên iPhone (dùng chứng chỉ của bạn).
+            3. Bật Developer Mode (iOS 16+: Settings > Privacy & Security) và Trust enterprise developer lần đầu mở app.
+
+            File này chưa ký nên không cài trực tiếp được — phải ký lại bằng zSign trước.
+          files: app/CanDT580-unsigned.ipa
