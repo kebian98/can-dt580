@@ -1,28 +1,32 @@
 /**
  * Định dạng số cân + số tiền: hiển thị trên màn hình + câu đọc bằng giọng Việt.
- * Cách đọc kiểu chợ, tự nhiên:
- *  - 12.5 -> "12 ký rưỡi"   | 12.3 -> "12 ký 3" | 12.0 -> "12 ký"
- *  - 0.5  -> "nửa ký"       | 0.3  -> "0 ký 3"  | 0    -> "không ký"
+ * Số cân chính xác tới gam (3 số lẻ, khớp màn hình cân DT580):
+ *  - Hiển thị: 1.174 -> "1.174" | 0.209 -> "0.209" | 12.0 -> "12.000"
+ *  - Đọc: 1.174 -> "1 ký 174 gam" | 0.5 -> "nửa ký" | 0.209 -> "209 gam"
+ *  - 12.0 -> "12 ký" | 2.5 -> "2 ký rưỡi" | 0 -> "không ký"
  *  - 100.000đ -> "100 nghìn"        | 1.250.000đ -> "1 triệu 250 nghìn"
  *  - 25.000đ  -> "25 nghìn"         | 1.000.000đ -> "1 triệu"
  *  - 1.234.567đ -> "1 triệu 234 nghìn 567 đồng"
  */
 
-/** Số hiển thị trên màn hình, luôn 1 số lẻ. Chưa có số thì trả về "—". */
+/** Số hiển thị trên màn hình, luôn 3 số lẻ (tới gam) để khớp màn hình cân. Chưa có số thì trả về "—". */
 export function formatWeightDisplay(kg: number | null): string {
   if (kg === null || Number.isNaN(kg)) return '—';
-  return kg.toFixed(1);
+  return kg.toFixed(3);
 }
 
-/** Câu đọc bằng giọng Việt cho 1 số cân (kg). */
+/** Câu đọc bằng giọng Việt cho 1 số cân (kg), chính xác tới gam. */
 export function formatWeightSpeech(kg: number): string {
-  if (!Number.isFinite(kg) || kg <= 0) return 'không ký';
-  const intPart = Math.floor(kg);
-  const frac = Math.round((kg - intPart) * 10);
-  if (frac === 0) return `${intPart} ký`;
-  if (frac === 5) return intPart === 0 ? 'nửa ký' : `${intPart} ký rưỡi`;
-  if (intPart === 0) return `0 ký ${frac}`;
-  return `${intPart} ký ${frac}`;
+  if (!Number.isFinite(kg)) return 'không ký';
+  const grams = Math.round(kg * 1000);
+  if (grams <= 0) return 'không ký';
+  if (grams === 500) return 'nửa ký';
+  if (grams < 1000) return `${grams} gam`;
+  const intPart = Math.floor(grams / 1000);
+  const rem = grams % 1000;
+  if (rem === 0) return `${intPart} ký`;
+  if (rem === 500) return `${intPart} ký rưỡi`;
+  return `${intPart} ký ${rem} gam`;
 }
 
 /** Số tiền hiển thị trên màn hình, định dạng tiền Việt. VD 100000 -> "100.000đ". */
